@@ -16,7 +16,7 @@ This project implements a **two-stage cascade pipeline** for pneumothorax detect
 │                        │                                                │
 │                        └────────► NO ──► Empty Mask (-1)                │
 │                                                                         │
-│           n    ~77% of images are healthy → Skip segmentation           │
+│                ~77% of images are healthy → Skip segmentation           │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
