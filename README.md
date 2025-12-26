@@ -9,14 +9,15 @@ This project implements a **two-stage cascade pipeline** for pneumothorax detect
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                         CASCADE PIPELINE                                │
+│ CASCADE PIPELINE                                                        │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
-│  Input Image ──► [CLASSIFIER] ──► Suspect? ──YES──► [SEGMENTER] ──► Mask│
-│                        │                                                │
-│                        └────────► NO ──► Empty Mask (-1)                │
+│ Input Image ──► [CLASSIFIER] ──► Suspect? ──YES──► [SEGMENTER] ──► Mask │
+│                               │                           │             │
+│                               └────────► NO ──► Empty     └──► Empty    │
 │                                                                         │
-│                ~77% of images are healthy → Skip segmentation           │
+│ Classifier skips most healthy scans; segmenter can still output empty   │
+│ masks to reject classifier false positives.                             │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -38,16 +39,12 @@ This project implements a **two-stage cascade pipeline** for pneumothorax detect
 | Optimization | F2-Score (Recall weighted 2× more than Precision) |
 | Training | Weighted Random Sampler for balanced batches |
 
-**Why EfficientNet-B3?**
-- Excellent accuracy/speed tradeoff (~12M parameters)
-- Compound scaling provides better feature extraction
-- Pretrained weights transfer well to medical imaging
 
 **Threshold Calibration:**  
-The classifier threshold is calibrated to achieve **~95% recall** - we accept some false positives because:
-1. Missing a lesion (False Negative) is clinically dangerous
-2. False positives are filtered by the segmenter in Stage 2
-3. Most healthy images are still correctly filtered out
+The classifier threshold is calibrated to achieve **~95% recall**
+we accept some false positives because:
+- False positives are filtered by the segmenter in Stage 2
+- Most healthy images are still correctly filtered out
 
 ### Stage 2: Segmenter (The Detector)
 
@@ -63,12 +60,6 @@ The classifier threshold is calibrated to achieve **~95% recall** - we accept so
 | Output | Segmentation mask 512×512 |
 | Loss | Combo Loss (BCE + Batch Dice) |
 | Activation | GELU |
-
-**Why ConvNeXt-Tiny?**
-- Modern architecture outperforming traditional ResNets
-- Efficient 4× downsampling in stem layer
-- Better gradient flow with LayerNorm and GELU
-- Strong pretrained representations
 
 **Batch Dice Loss:**  
 Instead of computing Dice per-image (which gives perfect 1.0 score on empty masks), we compute Dice across the entire batch. This prevents the model from learning to predict empty masks on healthy images.
@@ -96,27 +87,6 @@ Validation: Lesion Dice score (only on positive cases)
 Metric: Dice coefficient + Classification accuracy
 ```
 
-## ⚡ Inference Pipeline
-
-```python
-for image in dataset:
-    # Stage 1: Fast classification
-    prob = classifier(image)
-    
-    if prob < threshold:
-        # ~77% of cases: Skip expensive segmentation
-        mask = empty_mask()
-    else:
-        # ~23% of cases: Run segmentation
-        mask = segmenter(image)
-        
-        # Post-processing: Remove small components
-        mask = filter_small_components(mask, min_pixels=200)
-    
-    # Encode result
-    rle = encode_mask(mask)
-```
-
 
 ## 📁 Output Formats
 
@@ -134,13 +104,13 @@ All thresholds are configurable in `PipelineConfig`:
 ```python
 class PipelineConfig:
     # Classifier threshold (calibrated for high recall)
-    CLASSIFIER_THRESHOLD = 0.35  # Lower = more sensitive
-    
+    CLASSIFIER_THRESHOLD = 0.28  # lower = more sensitive
+
     # Segmenter probability threshold
-    SEGMENTER_THRESHOLD = 0.5
-    
+    SEGMENTER_THRESHOLD = 0.94
+
     # Minimum lesion size (pixels)
-    MIN_PIXELS = 200  # Filter noise/artifacts
+    MIN_PIXELS = 100  # filter noise/artifacts
 ```
 
 ## 🗂️ Project Structure
