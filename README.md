@@ -13,8 +13,8 @@ This project implements a **two-stage cascade pipeline** for pneumothorax detect
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
 │ Input Image ──► [CLASSIFIER] ──► Suspect? ──YES──► [SEGMENTER] ──► Mask │
-│                               │                           │             │
-│                               └────────► NO ──► Empty     └──► Empty    │
+│                                   │                       │             │
+│                                   └────────► NO ──► Empty └──► Empty    │
 │                                                                         │
 │ Classifier skips most healthy scans; segmenter can still output empty   │
 │ masks to reject classifier false positives.                             │
