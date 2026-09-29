@@ -25,38 +25,40 @@ Pour éviter de faire tourner un modèle de segmentation lourd sur chaque examen
 
 ### Étape de classification
 
-**Modèle** : EfficientNet-B3
-**Rôle** : Classification binaire (présence ou absence de lésion).
-**Priorité** : Sensibilité maximale (rappel élevé) pour limiter strictement les faux négatifs.
+**Modèle :** EfficientNet-B3  
+**Rôle :** Classification binaire (présence ou absence de lésion)  
+**Priorité :** Sensibilité maximale (rappel élevé) pour limiter strictement les faux négatifs  
 
+**Spécifications :**
+- **Entrée :** Niveaux de gris 512×512
+- **Sortie :** Score de probabilité entre 0 et 1
+- **Fonction de perte :** Focal Loss (alpha = 0,75, gamma = 2,0)
+- **Optimisation :** Score F2 (rappel pondéré deux fois plus que la précision)
+- **Entraînement :** Échantillonnage pondéré (*Weighted Random Sampler*) pour des lots équilibrés
 
-**Entrée** : Niveaux de gris 512x512
-**Sortie** : Score de probabilité entre 0 et 1
-**Fonction de perte** : Focal Loss (alpha = 0,75, gamma = 2,0)
-**Optimisation** : Score F2 (rappel pondéré deux fois plus que la précision)
-**Entraînement** : Échantillonnage pondéré (Weighted Random Sampler) pour des lots équilibrés
-
-**Calibration du seuil** :
+**Calibration du seuil :**  
 Le seuil du classifieur est ajusté pour atteindre environ 95 % de rappel. Quelques faux positifs sont acceptés car :
-Ils sont éliminés par le segmentateur à l'étape 2.
-La majorité des images saines est tout de même correctement filtrée dès l'étape 1.
+
+- Ils sont éliminés par le segmentateur à l'étape 2.
+- La majorité des images saines est tout de même correctement filtrée dès l'étape 1.
 
 
 ### Étape de segmentation
 
-**Modèle** : U-Net avec encodeur ConvNeXt-Tiny
-**Rôle** : Segmentation au pixel (localisation précise de la lésion)
-**Priorité** : Localisation exacte avec un minimum de faux positifs
+**Modèle :** U-Net avec encodeur ConvNeXt-Tiny  
+**Rôle :** Segmentation au pixel (localisation précise de la lésion)  
+**Priorité :** Localisation exacte avec un minimum de faux positifs  
 
-Composants du segmentateur :
-**Encodeur** : ConvNeXt-Tiny (pré-entraîné sur ImageNet)
-**Décodeur** : Blocs de convolution résiduels avec connexions directes
-**Entrée** : Niveaux de gris 512x512
-**Sortie** : Masque de segmentation 512x512
-**Fonction de perte** : Perte combinée (BCE + Batch Dice)
-**Activation** : GELU
+**Composants du segmentateur :**
+- **Encodeur :** ConvNeXt-Tiny (pré-entraîné sur ImageNet)
+- **Décodeur :** Blocs de convolution résiduels avec connexions directes
+- **Entrée :** Niveaux de gris 512×512
+- **Sortie :** Masque de segmentation 512×512
+- **Fonction de perte :** Perte combinée (BCE + Batch Dice)
+- **Activation :** GELU
 
-**Batch Dice**  
+### Batch Dice
+
 Au lieu de calculer le coefficient Dice image par image (ce qui attribue un score parfait de 1,0 lorsque le masque réel et la prédiction sont tous deux vides), le calcul est effectué globalement sur l'ensemble du lot. Cela empêche le modèle d'apprendre à prédire systématiquement des masques vides pour les images saines.
 
 ## 🔧 Configuration
