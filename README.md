@@ -1,11 +1,13 @@
-# CT-PneumoSeg
-AI model to detect pneumothorax in CT scans and generate segmentation masks highlighting the pathological regions.
+# Détection de pneumothorax par pipeline en cascade
 
-# Medical Image Lesion Detection - Cascade Pipeline
+Le projet vise à détecter les pneumothorax sur imagerie médicale et à générer un masque précis de la région pathologique.
 
-## 🎯 Strategy Overview
+## 🎯 Stratégies d'entraînement
 
-This project implements a **two-stage cascade pipeline** for pneumothorax detection in chest X-rays. Instead of running a heavy segmentation model on every image, we use a lightweight classifier as a filter, significantly improving inference speed while maintaining high detection accuracy.
+Pour éviter de faire tourner un modèle de segmentation lourd sur chaque examen (la majorité étant sains), l'architecture repose sur une cascade à **deux étapes** :
+    1. Le classifieur (filtre rapide) : analyse l'image et écarte immédiatement les scans normaux.
+    2. Le segmenter (analyse fine) : traite uniquement les cas suspects pour délimiter la lésion. Si le classifieur a produit un faux positif, le segmenter peut encore renvoyer un masque vide pour corriger l'erreur.
+
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -24,103 +26,66 @@ This project implements a **two-stage cascade pipeline** for pneumothorax detect
 
 ## 🏗️ Architecture
 
-### Stage 1: Classifier (The Filter)
+### Étape de classification
 
-**Model:** EfficientNet-B3  
-**Role:** Binary classification - "Does this image contain a lesion?"  
-**Priority:** **High Sensitivity (Recall)** - Never miss a lesion
-
-| Component | Details |
-|-----------|---------|
-| Backbone | EfficientNet-B3 (pretrained ImageNet) |
-| Input | Grayscale 512×512 |
-| Output | Probability score [0, 1] |
-| Loss | Focal Loss (α=0.75, γ=2.0) |
-| Optimization | F2-Score (Recall weighted 2× more than Precision) |
-| Training | Weighted Random Sampler for balanced batches |
+Modèle : EfficientNet-B3
+Rôle : Classification binaire (présence ou absence de lésion).
+Priorité : Sensibilité maximale (rappel élevé) pour limiter strictement les faux négatifs.
 
 
-**Threshold Calibration:**  
-The classifier threshold is calibrated to achieve **~95% recall**
-we accept some false positives because:
-- False positives are filtered by the segmenter in Stage 2
-- Most healthy images are still correctly filtered out
+Entrée : Niveaux de gris 512x512
+Sortie : Score de probabilité entre 0 et 1
+Fonction de perte : Focal Loss (alpha = 0,75, gamma = 2,0)
+Optimisation : Score F2 (rappel pondéré deux fois plus que la précision)
+Entraînement : Échantillonnage pondéré (Weighted Random Sampler) pour des lots équilibrés
 
-### Stage 2: Segmenter (The Detector)
-
-**Model:** U-Net with ConvNeXt-Tiny Backbone  
-**Role:** Pixel-wise segmentation - "Where exactly is the lesion?"  
-**Priority:** **Precise localization** with minimal false positives
-
-| Component | Details |
-|-----------|---------|
-| Encoder | ConvNeXt-Tiny (pretrained ImageNet) |
-| Decoder | Residual ConvBlocks with skip connections |
-| Input | Grayscale 512×512 |
-| Output | Segmentation mask 512×512 |
-| Loss | Combo Loss (BCE + Batch Dice) |
-| Activation | GELU |
-
-**Batch Dice Loss:**  
-Instead of computing Dice per-image (which gives perfect 1.0 score on empty masks), we compute Dice across the entire batch. This prevents the model from learning to predict empty masks on healthy images.
-
-```python
-# Traditional Dice: Empty prediction on empty mask = 1.0 (perfect but meaningless)
-# Batch Dice: Computes intersection/union across ALL images in batch
-```
-
-## 📊 Training Strategy
-
-### Classifier Training
-```
-Dataset: Full dataset with real class distribution (~23% positive)
-Sampling: WeightedRandomSampler → 50/50 balanced batches
-Validation: Real proportions (for proper threshold calibration)
-Metric: F2-Score (β=2 prioritizes recall)
-```
-
-### Segmenter Training
-```
-Dataset: Enriched with lesion cases (configurable ratio, e.g., 75% lesions)
-Augmentation: Flip, Rotate, ShiftScale
-Validation: Lesion Dice score (only on positive cases)
-Metric: Dice coefficient + Classification accuracy
-```
+Calibration du seuil :
+Le seuil du classifieur est ajusté pour atteindre environ 95 % de rappel. Quelques faux positifs sont acceptés car :
+Ils sont éliminés par le segmentateur à l'étape 2.
+La majorité des images saines est tout de même correctement filtrée dès l'étape 1.
 
 
-## 📁 Output Formats
+### Étape de segmentation
 
-The pipeline generates two prediction formats:
+Modèle : U-Net avec encodeur ConvNeXt-Tiny
+Rôle : Segmentation au pixel (localisation précise de la lésion)
+Priorité : Localisation exacte avec un minimum de faux positifs
 
-| File | Description | Use Case |
-|------|-------------|----------|
-| `predictions_aggregated.csv` | 1 row per image, all lesions merged | Standard submission format |
-| `predictions_split.csv` | N rows per image, 1 per lesion | Multi-instance evaluation |
+Composants du segmentateur :
+Encodeur : ConvNeXt-Tiny (pré-entraîné sur ImageNet)
+Décodeur : Blocs de convolution résiduels avec connexions directes
+Entrée : Niveaux de gris 512x512
+Sortie : Masque de segmentation 512x512
+Fonction de perte : Perte combinée (BCE + Batch Dice)
+Activation : GELU
+
+**Batch Dice**  
+Au lieu de calculer le coefficient Dice image par image (ce qui attribue un score parfait de 1,0 lorsque le masque réel et la prédiction sont tous deux vides), le calcul est effectué globalement sur l'ensemble du lot. Cela empêche le modèle d'apprendre à prédire systématiquement des masques vides pour les images saines.
 
 ## 🔧 Configuration
 
-All thresholds are configurable in `PipelineConfig`:
+Tous les seuils sont configurables dans `PipelineConfig`:
 
 ```python
 class PipelineConfig:
-    # Classifier threshold (calibrated for high recall)
-    CLASSIFIER_THRESHOLD = 0.28  # lower = more sensitive
+    # Seuil du classifieur (calibré pour un rappel élevé)
+    CLASSIFIER_THRESHOLD = 0.28  # plus bas = plus sensible
 
-    # Segmenter probability threshold
+    # Seuil de probabilité du segmentateur
     SEGMENTER_THRESHOLD = 0.94
 
-    # Minimum lesion size (pixels)
-    MIN_PIXELS = 100  # filter noise/artifacts
+    # Taille minimale de la lésion (pixels)
+    MIN_PIXELS = 100  # filtre le bruit et les artefacts
 ```
 
 ## 🗂️ Project Structure
 
 ```
-├── classifier_efficientnet_b3.py   # Stage 1: Binary classifier
-├── segmenter_convnext_tiny.py      # Stage 2: U-Net segmenter
-├── pipeline_inference.py           # Combined inference pipeline
-├── visualizations/                 # Training curves, confusion matrices
-└── outputs/                        # Predictions CSV files
+├── classifier_efficientnet_b3.py   # Étape 1 : Classifieur binaire
+├── segmenter_convnext_tiny.py      # Étape 2 : Segmenter U-Net
+├── pipeline_inference.py           # Pipeline d'inférence combiné
+├── visualizations/                 # Courbes d'entraînement, matrices de confusion
+└── outputs/                        # Fichiers CSV de prédictions
 ```
 
 - [EfficientNet: Rethinking Model Scaling](https://arxiv.org/abs/1905.11946)
