@@ -14,7 +14,7 @@ Pour éviter de faire tourner un modèle de segmentation lourd sur chaque examen
 │ PIPELINE EN CASCADE                                                     │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
-│ Image ──► [CLASSIFIEUR] ──► Suspect? ──OUI──► [SEGMENTUR] ──► Masque    │
+│ Image ──► [CLASSIFIEUR] ──► Suspect? ──OUI──► [SEGMENTER] ──► Masque    │
 │                                   │                      │              │
 │                                   └───────► NON ──► Vide └──► Vide      │
 │                                                                         │
