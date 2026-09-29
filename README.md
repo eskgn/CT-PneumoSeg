@@ -5,21 +5,18 @@ Le projet vise à détecter les pneumothorax sur imagerie médicale et à géné
 ## 🎯 Stratégies d'entraînement
 
 Pour éviter de faire tourner un modèle de segmentation lourd sur chaque examen (la majorité étant sains), l'architecture repose sur une cascade à **deux étapes** :
-    1. Le classifieur (filtre rapide) : analyse l'image et écarte immédiatement les scans normaux.
-    2. Le segmenter (analyse fine) : traite uniquement les cas suspects pour délimiter la lésion. Si le classifieur a produit un faux positif, le segmenter peut encore renvoyer un masque vide pour corriger l'erreur.
+    1. Le classifieur : analyse l'image et écarte immédiatement les scans normaux.
+    2. Le segmenter : traite uniquement les cas suspects pour délimiter la lésion. Si le classifieur a produit un faux positif, le segmenter peut encore renvoyer un masque vide pour corriger l'erreur.
 
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│ CASCADE PIPELINE                                                        │
+│ PIPELINE EN CASCADE                                                     │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
-│ Input Image ──► [CLASSIFIER] ──► Suspect? ──YES──► [SEGMENTER] ──► Mask │
-│                                   │                       │             │
-│                                   └────────► NO ──► Empty └──► Empty    │
-│                                                                         │
-│ Classifier skips most healthy scans; segmenter can still output empty   │
-│ masks to reject classifier false positives.                             │
+│ Image ──► [CLASSIFIEUR] ──► Suspect? ──OUI──► [SEGMENTUR] ──► Masque    │
+│                                   │                      │              │
+│                                   └───────► NON ──► Vide └──► Vide      │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
